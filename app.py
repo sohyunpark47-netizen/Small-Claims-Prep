@@ -347,7 +347,7 @@ def render_footer():
     This tool covers the law of England and Wales only. It does not apply to Scotland, Northern Ireland, or any other jurisdiction.
     </div>
     """, unsafe_allow_html=True)
-    
+
 # ── WELCOME ───────────────────────────────────────────────────────────────────
 if st.session_state.stage == "welcome":
     st.markdown('<h1 style="margin-bottom:0.25rem;">Small Claims Prep</h1>', unsafe_allow_html=True)
@@ -371,6 +371,8 @@ if st.session_state.stage == "welcome":
             st.session_state.mode = "defendant"
             st.session_state.stage = "agent1"
             st.rerun()
+    
+    render_footer()
 
 # ── AGENT 1: FACT COLLECTOR ───────────────────────────────────────────────────
 elif st.session_state.stage == "agent1":
@@ -418,6 +420,8 @@ elif st.session_state.stage == "agent1":
             response = call_claude(system, api_messages, stream=False)
             st.session_state.messages_1.append({"role": "assistant", "content": response})
             st.rerun()
+    
+    render_footer()
 
 # ── AGENT 2: LEGAL ANALYST ────────────────────────────────────────────────────
 elif st.session_state.stage == "agent2":
@@ -442,6 +446,8 @@ elif st.session_state.stage == "agent2":
     if st.button("Continue to Preparation →"):
         st.session_state.stage = "agent3"
         st.rerun()
+    
+    render_footer()
 
 # ── AGENT 3: CROSS EXAMINER ───────────────────────────────────────────────────
 elif st.session_state.stage == "agent3":
@@ -488,6 +494,8 @@ elif st.session_state.stage == "agent3":
             response = call_claude(system, api_messages, stream=False)
             st.session_state.messages_3.append({"role": "assistant", "content": response})
             st.rerun()
+    
+    render_footer()
 
 # ── AGENT 4: SUMMARY WRITER ───────────────────────────────────────────────────
 elif st.session_state.stage == "agent4":
@@ -525,3 +533,5 @@ elif st.session_state.stage == "agent4":
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
+    
+    render_footer()
