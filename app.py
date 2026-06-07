@@ -162,7 +162,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Anthropic client ──────────────────────────────────────────────────────────
-@st.cache_resource
 def get_client():
     api_key = os.environ.get("ANTHROPIC_API_KEY") or st.secrets.get("ANTHROPIC_API_KEY", "")
     return anthropic.Anthropic(api_key=api_key)
