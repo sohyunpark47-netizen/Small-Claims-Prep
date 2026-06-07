@@ -415,7 +415,8 @@ elif st.session_state.stage == "agent1":
             st.session_state.input_key_1 += 1
             st.session_state.messages_1.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_1]
-            response = call_claude(system, api_messages)
+            with st.spinner("Thinking..."):
+                response = call_claude(system, api_messages)
             st.session_state.messages_1.append({"role": "assistant", "content": response})
             st.rerun()
 
@@ -505,7 +506,9 @@ elif st.session_state.stage == "agent3":
             st.session_state.cross_count += 1
             st.session_state.messages_3.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_3]
-            response = call_claude(system, api_messages)
+            
+            with st.spinner("Thinking..."):
+                response = call_claude(system, api_messages)
             st.session_state.messages_3.append({"role": "assistant", "content": response})
             st.rerun()
 
