@@ -186,10 +186,8 @@ You must collect ALL of the following before declaring the facts complete:
 4. What evidence the user has (receipts, emails, photos, contracts, texts)
 5. How the user paid (cash, card, credit card, bank transfer, PayPal etc.)
 
-Once you have all five, end your final message with a brief summary of the facts collected, then on the very last line write exactly:
+Once you have all five, end your message with exactly this line on its own:
 FACTS COMPLETE
-
-Do not ask any follow-up questions after writing FACTS COMPLETE. Do not ask the user to confirm or add anything. FACTS COMPLETE is the final line.
 
 Do not move on until all five are genuinely covered. Do not give legal opinions. Do not tell the user whether they have a good case."""
 
@@ -205,10 +203,8 @@ You must collect ALL of the following before declaring the facts complete:
 5. What evidence the user has to support their position (receipts, emails, photos, contracts, texts)
 6. Any prior attempts to resolve the dispute
 
-Once you have all points, end your final message with a brief summary of the facts collected, then on the very last line write exactly:
+Once you have all points, end your message with exactly this line on its own:
 FACTS COMPLETE
-
-Do not ask any follow-up questions after writing FACTS COMPLETE. Do not ask the user to confirm or add anything. FACTS COMPLETE is the final line.
 
 Do not give legal opinions. Do not tell the user whether they have a good defence."""
 
@@ -406,7 +402,6 @@ elif st.session_state.stage == "agent1":
             summary_prompt = f"Summarise the following fact-collection conversation into a structured summary covering: what happened, key dates, amount involved, evidence available, and payment method.\n\n{convo_text}"
             summary = call_claude("You produce structured factual summaries. Be concise and factual.", [{"role": "user", "content": summary_prompt}])
             st.session_state.facts_summary = summary
-            st.session_state.messages_1 = []
             st.session_state.stage = "agent2"
             st.rerun()
     else:
@@ -420,8 +415,7 @@ elif st.session_state.stage == "agent1":
             st.session_state.input_key_1 += 1
             st.session_state.messages_1.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_1]
-            with st.spinner("Thinking..."):
-                response = call_claude(system, api_messages)
+            response = call_claude(system, api_messages)
             st.session_state.messages_1.append({"role": "assistant", "content": response})
             st.rerun()
 
@@ -511,9 +505,7 @@ elif st.session_state.stage == "agent3":
             st.session_state.cross_count += 1
             st.session_state.messages_3.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_3]
-            
-            with st.spinner("Thinking..."):
-                response = call_claude(system, api_messages)
+            response = call_claude(system, api_messages)
             st.session_state.messages_3.append({"role": "assistant", "content": response})
             st.rerun()
 
@@ -559,12 +551,86 @@ elif st.session_state.stage == "agent4":
             st.session_state.final_summary = ""
             st.rerun()
     with col2:
-        if st.button("🖨 Print Summary"):
-            st.markdown("<script>window.print()</script>", unsafe_allow_html=True)
+        show_print = st.button("🖨 Print / Save as PDF")
     with col3:
         if st.button("Start Again"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
+
+    if show_print:
+        import streamlit.components.v1 as components
+        import markdown as md_lib
+
+        summary_html = md_lib.markdown(st.session_state.final_summary)
+
+        print_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
+          body {{
+            font-family: 'DM Sans', sans-serif;
+            font-size: 11pt;
+            color: #1a1a1a;
+            max-width: 680px;
+            margin: 2rem auto;
+            line-height: 1.6;
+          }}
+          h1, h2, h3, h4 {{
+            font-family: 'DM Serif Display', serif;
+            margin-top: 1.4rem;
+            margin-bottom: 0.4rem;
+          }}
+          h1 {{ font-size: 1.5rem; }}
+          h2 {{ font-size: 1.2rem; border-bottom: 1px solid #ccc; padding-bottom: 0.2rem; }}
+          h3 {{ font-size: 1rem; }}
+          ul, ol {{ padding-left: 1.4rem; }}
+          li {{ margin-bottom: 0.3rem; }}
+          table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 10pt; }}
+          th {{ text-align: left; border-bottom: 2px solid #1a1a1a; padding: 0.4rem 0.6rem; }}
+          td {{ border-bottom: 1px solid #ddd; padding: 0.4rem 0.6rem; vertical-align: top; }}
+          .notice {{
+            border-left: 3px solid #1a1a1a;
+            padding: 0.6rem 0.8rem;
+            background: #f5f3ef;
+            font-size: 9pt;
+            margin-top: 1.5rem;
+            color: #444;
+          }}
+          .footer {{
+            font-size: 8pt;
+            color: #999;
+            text-align: center;
+            margin-top: 2rem;
+            border-top: 1px solid #eee;
+            padding-top: 0.6rem;
+          }}
+          @media print {{
+            body {{ margin: 1cm; max-width: 100%; }}
+            button {{ display: none; }}
+          }}
+        </style>
+        </head>
+        <body>
+        {summary_html}
+        <div class="notice">
+          This summary is preparation material only. It is not legal advice and should not be used as a court document.
+          Bring it to your appointment with a lawyer, legal adviser, or support service such as Citizens Advice.
+        </div>
+        <div class="footer">
+          Small Claims Prep — England and Wales only — smallclaims.streamlit.app
+        </div>
+        <script>
+          window.onload = function() {{ window.print(); }}
+        </script>
+        </body>
+        </html>
+        """
+
+        components.html(print_html, height=0, scrolling=False)
+        st.info("Your browser print dialog should have opened. Choose 'Save as PDF' to save a copy.")
 
     render_footer()
