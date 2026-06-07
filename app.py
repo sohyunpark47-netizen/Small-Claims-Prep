@@ -186,8 +186,10 @@ You must collect ALL of the following before declaring the facts complete:
 4. What evidence the user has (receipts, emails, photos, contracts, texts)
 5. How the user paid (cash, card, credit card, bank transfer, PayPal etc.)
 
-Once you have all five, end your message with exactly this line on its own:
+Once you have all five, end your final message with a brief summary of the facts collected, then on the very last line write exactly:
 FACTS COMPLETE
+
+Do not ask any follow-up questions after writing FACTS COMPLETE. Do not ask the user to confirm or add anything. FACTS COMPLETE is the final line.
 
 Do not move on until all five are genuinely covered. Do not give legal opinions. Do not tell the user whether they have a good case."""
 
@@ -203,8 +205,10 @@ You must collect ALL of the following before declaring the facts complete:
 5. What evidence the user has to support their position (receipts, emails, photos, contracts, texts)
 6. Any prior attempts to resolve the dispute
 
-Once you have all points, end your message with exactly this line on its own:
+Once you have all points, end your final message with a brief summary of the facts collected, then on the very last line write exactly:
 FACTS COMPLETE
+
+Do not ask any follow-up questions after writing FACTS COMPLETE. Do not ask the user to confirm or add anything. FACTS COMPLETE is the final line.
 
 Do not give legal opinions. Do not tell the user whether they have a good defence."""
 
@@ -402,6 +406,7 @@ elif st.session_state.stage == "agent1":
             summary_prompt = f"Summarise the following fact-collection conversation into a structured summary covering: what happened, key dates, amount involved, evidence available, and payment method.\n\n{convo_text}"
             summary = call_claude("You produce structured factual summaries. Be concise and factual.", [{"role": "user", "content": summary_prompt}])
             st.session_state.facts_summary = summary
+            st.session_state.messages_1 = []
             st.session_state.stage = "agent2"
             st.rerun()
     else:
