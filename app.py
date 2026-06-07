@@ -341,6 +341,13 @@ def render_messages(messages):
             if content:
                 st.markdown(f'<div class="message-agent">{content}</div>', unsafe_allow_html=True)
 
+def render_footer():
+    st.markdown("""
+    <div style="text-align:center; color:#999; font-size:0.78rem; margin-top:3rem; padding-bottom:2rem;">
+    This tool covers the law of England and Wales only. It does not apply to Scotland, Northern Ireland, or any other jurisdiction.
+    </div>
+    """, unsafe_allow_html=True)
+    
 # ── WELCOME ───────────────────────────────────────────────────────────────────
 if st.session_state.stage == "welcome":
     st.markdown('<h1 style="margin-bottom:0.25rem;">Small Claims Prep</h1>', unsafe_allow_html=True)
