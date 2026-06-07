@@ -112,12 +112,6 @@ st.markdown("""
     color: #1a1a1a;
   }
 
-  .mode-toggle {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 2rem;
-  }
-
   .stButton > button {
     border-radius: 2px;
     border: 1px solid #1a1a1a;
@@ -134,7 +128,6 @@ st.markdown("""
     border-color: #333;
   }
 
-  .stTextInput > div > div > input,
   .stTextArea > div > div > textarea {
     border: 1px solid #D0CCC6;
     border-radius: 2px;
@@ -144,18 +137,31 @@ st.markdown("""
     color: #1a1a1a;
   }
 
-  .stTextInput > div > div > input:focus,
   .stTextArea > div > div > textarea:focus {
     border-color: #1a1a1a;
     box-shadow: none;
+  }
+
+  /* Remove red focus ring */
+  .stTextArea > div[data-focused="true"] > div > textarea {
+    border-color: #1a1a1a !important;
+    box-shadow: none !important;
   }
 
   footer {display: none;}
   #MainMenu {visibility: hidden;}
   header {visibility: hidden;}
 
+  .footer-note {
+    text-align: center;
+    color: #999;
+    font-size: 0.78rem;
+    margin-top: 3rem;
+    padding-bottom: 2rem;
+  }
+
   @media print {
-    .stButton, .stTextInput, .stTextArea, .progress-bar, .stage-header, .stage-sub { display: none; }
+    .stButton, .stTextArea, .progress-bar, .stage-header, .stage-sub, .footer-note { display: none; }
     .summary-box { border: none; padding: 0; }
   }
 </style>
@@ -166,7 +172,6 @@ def get_client():
     api_key = os.environ.get("ANTHROPIC_API_KEY") or st.secrets.get("ANTHROPIC_API_KEY", "")
     return anthropic.Anthropic(api_key=api_key)
 
-client = get_client()
 MODEL = "claude-sonnet-4-6"
 
 # ── Agent system prompts ──────────────────────────────────────────────────────
@@ -210,6 +215,7 @@ You will receive a structured summary of facts from an earlier stage. Your job i
 2. If the user paid by credit card and the amount is between £100 and £30,000, flag the Section 75 option under the Consumer Credit Act 1974 clearly
 3. Produce a short, plain-English legal summary (3-5 paragraphs)
 
+Do NOT use markdown headers like ## or # in your response. Use plain text with clear paragraph breaks.
 Frame everything as information to discuss with a legal adviser, not as legal advice. Do not tell the user they have a strong or weak case. Do not recommend a specific course of action."""
 
 AGENT2_SYSTEM_DEFENDANT = """You are a legal information assistant helping someone prepare to speak to a lawyer or legal adviser about a small claims defence in England or Wales.
@@ -219,13 +225,15 @@ You will receive a structured summary of facts from an earlier stage. Your job i
 2. Note any procedural points (limitation periods, proper service, pre-action protocol compliance)
 3. Produce a short, plain-English legal summary (3-5 paragraphs) covering what the claimant would need to prove and what the defendant might rely on
 
+Do NOT use markdown headers like ## or # in your response. Use plain text with clear paragraph breaks.
 Frame everything as information to discuss with a legal adviser, not as legal advice. Do not tell the user they have a strong or weak defence."""
 
 AGENT3_SYSTEM = """You are helping someone prepare for a small claims hearing in England or Wales by stress-testing their case. You play the role of a probing district judge or the opposing party's representative.
 
 You will receive the user's facts and a legal analysis. Your job is to ask the hard questions — the ones that expose weaknesses, gaps in evidence, inconsistencies, or assumptions.
 
-Rules:
+CRITICAL RULES:
+- Never ask for anyone's name, address, or any personal identifier. Refer to people by their role only: "the seller", "the contractor", "the cardholder", "you".
 - Ask one question at a time
 - After each answer, briefly coach the user on how to strengthen their response or what to be careful about
 - Be direct but not hostile — you are helping them prepare, not attacking them
@@ -238,7 +246,8 @@ AGENT3_SYSTEM_DEFENDANT = """You are helping someone prepare their small claims 
 
 You will receive the defendant's facts and a legal analysis. Your job is to ask the hard questions — the ones that expose weaknesses, gaps in evidence, inconsistencies, or assumptions in the defence.
 
-Rules:
+CRITICAL RULES:
+- Never ask for anyone's name, address, or any personal identifier. Refer to people by their role only: "the claimant", "you", "the other party".
 - Ask one question at a time
 - After each answer, briefly coach the user on how to strengthen their response or what to be careful about
 - Be direct but not hostile — you are helping them prepare, not attacking them
@@ -281,15 +290,16 @@ Do not include legal advice. Do not recommend a specific outcome."""
 # ── Session state init ────────────────────────────────────────────────────────
 def init_state():
     defaults = {
-        "stage": "welcome",           # welcome, agent1, agent2, agent3, agent4, done
-        "mode": None,                 # claimant, defendant
-        "messages_1": [],             # agent 1 conversation
+        "stage": "welcome",
+        "mode": None,
+        "messages_1": [],
         "facts_summary": "",
         "legal_summary": "",
-        "cross_notes": [],            # list of (q, a) tuples
-        "messages_3": [],             # agent 3 conversation
+        "messages_3": [],
         "final_summary": "",
         "cross_count": 0,
+        "input_key_1": 0,
+        "input_key_3": 0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -298,27 +308,18 @@ def init_state():
 init_state()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def call_claude(system_prompt, messages, stream=True):
-    if stream:
-        with client.messages.stream(
-            model=MODEL,
-            max_tokens=1500,
-            system=system_prompt,
-            messages=messages
-        ) as s:
-            return s.get_final_text()
-    else:
-        resp = client.messages.create(
-            model=MODEL,
-            max_tokens=2000,
-            system=system_prompt,
-            messages=messages
-        )
-        return resp.content[0].text
+def call_claude(system_prompt, messages):
+    client = get_client()
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=2000,
+        system=system_prompt,
+        messages=messages
+    )
+    return resp.content[0].text
 
 def progress_html(stage):
-    stages = ["agent1", "agent2", "agent3", "agent4"]
-    order = {"welcome": -1, "agent1": 0, "agent2": 1, "agent3": 2, "agent4": 3, "done": 4}
+    order = {"welcome": -1, "agent1": 0, "agent2": 1, "agent3": 2, "agent4": 3}
     current = order.get(stage, -1)
     bars = ""
     for i in range(4):
@@ -342,11 +343,11 @@ def render_messages(messages):
                 st.markdown(f'<div class="message-agent">{content}</div>', unsafe_allow_html=True)
 
 def render_footer():
-    st.markdown("""
-    <div style="text-align:center; color:#999; font-size:0.78rem; margin-top:3rem; padding-bottom:2rem;">
-    This tool covers the law of England and Wales only. It does not apply to Scotland, Northern Ireland, or any other jurisdiction.
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        '<div class="footer-note">This tool covers the law of England and Wales only. '
+        'It does not apply to Scotland, Northern Ireland, or any other jurisdiction.</div>',
+        unsafe_allow_html=True
+    )
 
 # ── WELCOME ───────────────────────────────────────────────────────────────────
 if st.session_state.stage == "welcome":
@@ -355,7 +356,9 @@ if st.session_state.stage == "welcome":
 
     st.markdown("""
     <div class="notice-box">
-    <strong>Before you start:</strong> do not enter full names, addresses, or other identifying personal details. Describe your situation in general terms. This tool is designed to help you prepare for a conversation with a lawyer or legal adviser — it does not provide legal advice.
+    <strong>Before you start:</strong> do not enter full names, addresses, or other identifying personal details.
+    Describe your situation in general terms. This tool is designed to help you prepare for a conversation
+    with a lawyer or legal adviser — it does not provide legal advice.
     </div>
     """, unsafe_allow_html=True)
 
@@ -371,7 +374,6 @@ if st.session_state.stage == "welcome":
             st.session_state.mode = "defendant"
             st.session_state.stage = "agent1"
             st.rerun()
-    
     render_footer()
 
 # ── AGENT 1: FACT COLLECTOR ───────────────────────────────────────────────────
@@ -382,14 +384,12 @@ elif st.session_state.stage == "agent1":
 
     system = AGENT1_SYSTEM if st.session_state.mode == "claimant" else AGENT1_SYSTEM_DEFENDANT
 
-    # Start conversation if empty
     if not st.session_state.messages_1:
         opening = "I'm here to help you prepare. Tell me what happened — in your own words, as much or as little as you like to start."
         st.session_state.messages_1 = [{"role": "assistant", "content": opening}]
 
     render_messages(st.session_state.messages_1)
 
-    # Check if facts already complete
     facts_done = any(
         "FACTS COMPLETE" in m["content"]
         for m in st.session_state.messages_1
@@ -397,26 +397,28 @@ elif st.session_state.stage == "agent1":
     )
 
     if facts_done:
-        st.markdown('<div class="message-agent">I have everything I need. Moving to the next stage.</div>', unsafe_allow_html=True)
         if st.button("Continue to Legal Analysis →"):
-            # Build facts summary for agent 2
             convo_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages_1])
             summary_prompt = f"Summarise the following fact-collection conversation into a structured summary covering: what happened, key dates, amount involved, evidence available, and payment method.\n\n{convo_text}"
-            summary = call_claude("You produce structured factual summaries. Be concise and factual.", [{"role": "user", "content": summary_prompt}], stream=False)
+            summary = call_claude("You produce structured factual summaries. Be concise and factual.", [{"role": "user", "content": summary_prompt}])
             st.session_state.facts_summary = summary
-
-            # Run agent 2
             st.session_state.stage = "agent2"
             st.rerun()
     else:
-        user_input = st.chat_input("Type here...")
-        if user_input and user_input.strip():
+        user_input = st.text_area(
+            "Your response",
+            key=f"input_1_{st.session_state.input_key_1}",
+            height=100,
+            placeholder="Type here..."
+        )
+        if st.button("Send", key="send_1") and user_input.strip():
+            st.session_state.input_key_1 += 1
             st.session_state.messages_1.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_1]
-            response = call_claude(system, api_messages, stream=False)
+            response = call_claude(system, api_messages)
             st.session_state.messages_1.append({"role": "assistant", "content": response})
             st.rerun()
-    
+
     render_footer()
 
 # ── AGENT 2: LEGAL ANALYST ────────────────────────────────────────────────────
@@ -428,10 +430,10 @@ elif st.session_state.stage == "agent2":
     if not st.session_state.legal_summary:
         with st.spinner("Analysing your situation..."):
             system = AGENT2_SYSTEM if st.session_state.mode == "claimant" else AGENT2_SYSTEM_DEFENDANT
-            legal = call_claude(system, [{"role": "user", "content": st.session_state.facts_summary}], stream=False)
+            legal = call_claude(system, [{"role": "user", "content": st.session_state.facts_summary}])
             st.session_state.legal_summary = legal
 
-    st.markdown(f'<div class="message-agent">{st.session_state.legal_summary}</div>', unsafe_allow_html=True)
+    st.markdown(st.session_state.legal_summary)
 
     st.markdown("""
     <div class="notice-box" style="margin-top:1.5rem;">
@@ -439,10 +441,17 @@ elif st.session_state.stage == "agent2":
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button("Continue to Preparation →"):
-        st.session_state.stage = "agent3"
-        st.rerun()
-    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("← Back to Facts"):
+            st.session_state.stage = "agent1"
+            st.session_state.legal_summary = ""
+            st.rerun()
+    with col2:
+        if st.button("Continue to Preparation →"):
+            st.session_state.stage = "agent3"
+            st.rerun()
+
     render_footer()
 
 # ── AGENT 3: CROSS EXAMINER ───────────────────────────────────────────────────
@@ -457,13 +466,12 @@ elif st.session_state.stage == "agent3":
         context = f"FACTS:\n{st.session_state.facts_summary}\n\nLEGAL ANALYSIS:\n{st.session_state.legal_summary}"
         opening_prompt = f"Here are the facts and legal analysis. Begin the cross-examination.\n\n{context}"
         with st.spinner("Preparing questions..."):
-            opening = call_claude(system, [{"role": "user", "content": opening_prompt}], stream=False)
+            opening = call_claude(system, [{"role": "user", "content": opening_prompt}])
         st.session_state.messages_3 = [
             {"role": "user", "content": opening_prompt},
             {"role": "assistant", "content": opening}
         ]
 
-    # Render — skip the context message
     display_msgs = [m for m in st.session_state.messages_3 if not m["content"].startswith("Here are the facts")]
     render_messages(display_msgs)
 
@@ -475,18 +483,37 @@ elif st.session_state.stage == "agent3":
 
     if cross_done:
         st.markdown('<div class="message-agent">Good work. You\'ve been through the key questions. Let\'s put together your summary.</div>', unsafe_allow_html=True)
-        if st.button("Generate My Summary →"):
-            st.session_state.stage = "agent4"
-            st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("← Back to Legal Analysis"):
+                st.session_state.stage = "agent2"
+                st.session_state.messages_3 = []
+                st.rerun()
+        with col2:
+            if st.button("Generate My Summary →"):
+                st.session_state.stage = "agent4"
+                st.rerun()
     else:
-        user_input = st.chat_input("Type here...")
-        if user_input and user_input.strip():
+        user_input = st.text_area(
+            "Your answer",
+            key=f"input_3_{st.session_state.input_key_3}",
+            height=100,
+            placeholder="Answer the question above..."
+        )
+        if st.button("Send", key="send_3") and user_input.strip():
+            st.session_state.input_key_3 += 1
+            st.session_state.cross_count += 1
             st.session_state.messages_3.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_3]
-            response = call_claude(system, api_messages, stream=False)
+            response = call_claude(system, api_messages)
             st.session_state.messages_3.append({"role": "assistant", "content": response})
             st.rerun()
-    
+
+        if st.button("← Back to Legal Analysis", key="back_3"):
+            st.session_state.stage = "agent2"
+            st.session_state.messages_3 = []
+            st.rerun()
+
     render_footer()
 
 # ── AGENT 4: SUMMARY WRITER ───────────────────────────────────────────────────
@@ -505,25 +532,31 @@ elif st.session_state.stage == "agent4":
 
         with st.spinner("Writing your summary..."):
             system = AGENT4_SYSTEM if st.session_state.mode == "claimant" else AGENT4_SYSTEM_DEFENDANT
-            summary = call_claude(system, [{"role": "user", "content": full_context}], stream=False)
+            summary = call_claude(system, [{"role": "user", "content": full_context}])
             st.session_state.final_summary = summary
 
-    st.markdown(f'<div class="summary-box">{st.session_state.final_summary}</div>', unsafe_allow_html=True)
+    st.markdown(st.session_state.final_summary)
 
     st.markdown("""
     <div class="notice-box" style="margin-top:1.5rem;">
-    This summary is preparation material only. It is not legal advice and should not be used as a court document. Bring it to your appointment with a lawyer, legal adviser, or support service such as Citizens Advice.
+    This summary is preparation material only. It is not legal advice and should not be used as a court document.
+    Bring it to your appointment with a lawyer, legal adviser, or support service such as Citizens Advice.
     </div>
     """, unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
+        if st.button("← Back to Preparation"):
+            st.session_state.stage = "agent3"
+            st.session_state.final_summary = ""
+            st.rerun()
+    with col2:
         if st.button("🖨 Print Summary"):
             st.markdown("<script>window.print()</script>", unsafe_allow_html=True)
-    with col2:
+    with col3:
         if st.button("Start Again"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
-    
+
     render_footer()
