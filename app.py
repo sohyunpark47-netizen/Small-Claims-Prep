@@ -167,7 +167,7 @@ def get_client():
     return anthropic.Anthropic(api_key=api_key)
 
 client = get_client()
-MODEL = "claude-sonnet-4-6-20260217"
+MODEL = "claude-sonnet-4-6"
 
 # ── Agent system prompts ──────────────────────────────────────────────────────
 AGENT1_SYSTEM = """You are a careful, calm fact collector helping someone prepare to speak to a lawyer or legal adviser about a small claims matter in England or Wales.
