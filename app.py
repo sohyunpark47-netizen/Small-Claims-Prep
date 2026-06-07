@@ -400,8 +400,12 @@ elif st.session_state.stage == "agent1":
             st.session_state.stage = "agent2"
             st.rerun()
     else:
+        if "input_1_value" not in st.session_state:
+            st.session_state.input_1_value = ""
+
         user_input = st.text_area("Your response", key="input_1", height=100, placeholder="Type here...")
         if st.button("Send") and user_input.strip():
+            st.session_state.input_1_value = ""
             st.session_state.messages_1.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_1]
             response = call_claude(system, api_messages, stream=False)
@@ -466,8 +470,11 @@ elif st.session_state.stage == "agent3":
             st.session_state.stage = "agent4"
             st.rerun()
     else:
+        if "input_3_value" not in st.session_state:
+            st.session_state.input_3_value = ""
         user_input = st.text_area("Your answer", key="input_3", height=100, placeholder="Answer the question above...")
         if st.button("Send") and user_input.strip():
+            st.session_state.input_3_value = ""
             st.session_state.messages_3.append({"role": "user", "content": user_input.strip()})
             st.session_state.cross_count += 1
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_3]
