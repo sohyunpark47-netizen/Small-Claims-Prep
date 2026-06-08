@@ -1,5 +1,7 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import anthropic
+import markdown as md_lib
 import os
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -97,19 +99,10 @@ st.markdown("""
     line-height: 1.6;
   }
 
-  .summary-box {
-    background: white;
-    border: 1px solid #E0DDD8;
-    padding: 2rem;
-    font-size: 0.92rem;
-    line-height: 1.7;
-  }
-
-  .summary-box h3 {
-    font-size: 1rem;
-    margin-top: 1.2rem;
-    margin-bottom: 0.4rem;
-    color: #1a1a1a;
+  .input-area {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #E0DDD8;
   }
 
   .stButton > button {
@@ -128,6 +121,7 @@ st.markdown("""
     border-color: #333;
   }
 
+  /* Text area — minimal, word-processor style */
   .stTextArea > div > div > textarea {
     border: 1px solid #D0CCC6;
     border-radius: 2px;
@@ -135,15 +129,31 @@ st.markdown("""
     font-family: 'DM Sans', sans-serif;
     font-size: 0.95rem;
     color: #1a1a1a;
+    caret-color: #1a1a1a;
   }
 
   .stTextArea > div > div > textarea:focus {
     border-color: #1a1a1a;
-    box-shadow: none;
+    box-shadow: none !important;
+    outline: none !important;
   }
 
-  /* Remove red focus ring */
-  .stTextArea > div[data-focused="true"] > div > textarea {
+  /* Suppress all red/orange Streamlit focus rings */
+  .stTextArea > div {
+    box-shadow: none !important;
+  }
+
+  [data-baseweb="textarea"]:focus-within {
+    border-color: #1a1a1a !important;
+    box-shadow: none !important;
+  }
+
+  .stTextArea [data-baseweb="base-input"] {
+    border-color: #D0CCC6 !important;
+    box-shadow: none !important;
+  }
+
+  .stTextArea [data-baseweb="base-input"]:focus-within {
     border-color: #1a1a1a !important;
     box-shadow: none !important;
   }
@@ -162,7 +172,6 @@ st.markdown("""
 
   @media print {
     .stButton, .stTextArea, .progress-bar, .stage-header, .stage-sub, .footer-note { display: none; }
-    .summary-box { border: none; padding: 0; }
   }
 </style>
 """, unsafe_allow_html=True)
@@ -186,10 +195,13 @@ You must collect ALL of the following before declaring the facts complete:
 4. What evidence the user has (receipts, emails, photos, contracts, texts)
 5. How the user paid (cash, card, credit card, bank transfer, PayPal etc.)
 
-Once you have all five, end your message with exactly this line on its own:
+If the user mentions needing contact details for the other party (such as an address or full name), acknowledge that they will need these for any formal claim, but tell them not to enter those details here. Ask them to keep those details noted separately.
+
+Once you have all five points, end your final message with a brief plain-English summary of the facts collected, then on the very last line write exactly:
 FACTS COMPLETE
 
-Do not move on until all five are genuinely covered. Do not give legal opinions. Do not tell the user whether they have a good case."""
+Do not ask any follow-up questions after writing FACTS COMPLETE. Do not ask the user to confirm or add anything. FACTS COMPLETE must be the final line.
+Do not give legal opinions. Do not tell the user whether they have a good case."""
 
 AGENT1_SYSTEM_DEFENDANT = """You are a careful, calm fact collector helping someone prepare to speak to a lawyer or legal adviser. The user has received a small claims court claim against them in England or Wales and needs help preparing their defence.
 
@@ -198,14 +210,17 @@ Your job is to collect the full picture through conversation. Ask clarifying que
 You must collect ALL of the following before declaring the facts complete:
 1. What the claimant is alleging happened
 2. The user's account of events
-3. Key dates (when things happened, any correspondence, service of the claim)
+3. Key dates (when things happened, any correspondence, service of the claim, response deadline)
 4. The amount being claimed
 5. What evidence the user has to support their position (receipts, emails, photos, contracts, texts)
 6. Any prior attempts to resolve the dispute
 
-Once you have all points, end your message with exactly this line on its own:
+If the user mentions needing contact details for the other party, acknowledge that they will need these for any formal response, but tell them not to enter those details here. Ask them to keep those details noted separately.
+
+Once you have all points, end your final message with a brief plain-English summary of the facts collected, then on the very last line write exactly:
 FACTS COMPLETE
 
+Do not ask any follow-up questions after writing FACTS COMPLETE. Do not ask the user to confirm or add anything. FACTS COMPLETE must be the final line.
 Do not give legal opinions. Do not tell the user whether they have a good defence."""
 
 AGENT2_SYSTEM = """You are a legal information assistant helping someone prepare to speak to a lawyer or legal adviser about a small claims matter in England or Wales.
@@ -222,7 +237,7 @@ AGENT2_SYSTEM_DEFENDANT = """You are a legal information assistant helping someo
 
 You will receive a structured summary of facts from an earlier stage. Your job is to:
 1. Identify the most likely relevant legal defences or counter-arguments in plain English
-2. Note any procedural points (limitation periods, proper service, pre-action protocol compliance)
+2. Note any procedural points (limitation periods, proper service, pre-action protocol compliance, response deadline)
 3. Produce a short, plain-English legal summary (3-5 paragraphs) covering what the claimant would need to prove and what the defendant might rely on
 
 Do NOT use markdown headers like ## or # in your response. Use plain text with clear paragraph breaks.
@@ -233,7 +248,7 @@ AGENT3_SYSTEM = """You are helping someone prepare for a small claims hearing in
 You will receive the user's facts and a legal analysis. Your job is to ask the hard questions — the ones that expose weaknesses, gaps in evidence, inconsistencies, or assumptions.
 
 CRITICAL RULES:
-- Never ask for anyone's name, address, or any personal identifier. Refer to people by their role only: "the seller", "the contractor", "the cardholder", "you".
+- Never ask for anyone's name, address, or any personal identifier. Refer to people by their role only: "the seller", "the contractor", "the cardholder", "you", "the other party".
 - Ask one question at a time
 - After each answer, briefly coach the user on how to strengthen their response or what to be careful about
 - Be direct but not hostile — you are helping them prepare, not attacking them
@@ -262,10 +277,11 @@ You will receive: the user's facts, a legal analysis, and notes from a cross-exa
 
 Produce a clean one-page preparation summary containing:
 1. What happened — in three sentences maximum
-2. Chronology — key dates and evidence in a simple list
+2. Chronology — key dates and evidence in a simple table
 3. Legal basis — in plain English, no jargon
-4. Amount being claimed or defended
+4. Amount being claimed
 5. Key questions and prepared answers — at least three, drawn from the cross-examination
+6. Things to bring or action before your appointment — a checklist
 
 Format with clear section headings. This is preparation material for a conversation with a legal adviser, not a court document. Write it so a stressed, non-legally-trained person can pick it up, read it in two minutes, and feel more prepared.
 
@@ -278,10 +294,11 @@ You will receive: the defendant's facts, a legal analysis, and notes from a cros
 Produce a clean one-page preparation summary containing:
 1. The claim against them — in two sentences maximum
 2. Their account — in two sentences maximum
-3. Chronology — key dates and evidence in a simple list
+3. Chronology — key dates and evidence in a simple table
 4. Legal basis — relevant defences and what the claimant must prove, in plain English
 5. Amount being claimed
 6. Key questions and prepared answers — at least three, drawn from the cross-examination
+7. Things to bring or action before your appointment — a checklist including the response deadline
 
 Format with clear section headings. This is preparation material for a conversation with a legal adviser, not a court document.
 
@@ -342,12 +359,93 @@ def render_messages(messages):
             if content:
                 st.markdown(f'<div class="message-agent">{content}</div>', unsafe_allow_html=True)
 
+def render_input(key_suffix, input_key, placeholder="Type here..."):
+    st.markdown('<div class="input-area">', unsafe_allow_html=True)
+    user_input = st.text_area(
+        "Your response",
+        key=f"input_{key_suffix}_{input_key}",
+        height=100,
+        placeholder=placeholder,
+        label_visibility="collapsed"
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+    return user_input
+
 def render_footer():
     st.markdown(
         '<div class="footer-note">This tool covers the law of England and Wales only. '
-        'It does not apply to Scotland, Northern Ireland, or any other jurisdiction.</div>',
+        'It does not apply to Scotland, Northern Ireland, or any other jurisdiction. '
+        '<a href="/Privacy_Policy" style="color:#999;">Privacy Policy</a></div>',
         unsafe_allow_html=True
     )
+
+def render_print_pdf(summary_text):
+    summary_html = md_lib.markdown(summary_text, extensions=["tables"])
+    print_html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
+  body {{
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11pt;
+    color: #1a1a1a;
+    max-width: 680px;
+    margin: 2rem auto;
+    line-height: 1.6;
+  }}
+  h1, h2, h3, h4 {{
+    font-family: 'DM Serif Display', serif;
+    margin-top: 1.4rem;
+    margin-bottom: 0.4rem;
+  }}
+  h1 {{ font-size: 1.5rem; }}
+  h2 {{ font-size: 1.2rem; border-bottom: 1px solid #ccc; padding-bottom: 0.2rem; }}
+  h3 {{ font-size: 1rem; }}
+  ul, ol {{ padding-left: 1.4rem; }}
+  li {{ margin-bottom: 0.3rem; }}
+  table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 10pt; }}
+  th {{ text-align: left; border-bottom: 2px solid #1a1a1a; padding: 0.4rem 0.6rem; font-weight: 500; }}
+  td {{ border-bottom: 1px solid #ddd; padding: 0.4rem 0.6rem; vertical-align: top; }}
+  strong {{ font-weight: 500; }}
+  .notice {{
+    border-left: 3px solid #1a1a1a;
+    padding: 0.6rem 0.8rem;
+    background: #f5f3ef;
+    font-size: 9pt;
+    margin-top: 1.5rem;
+    color: #444;
+  }}
+  .doc-footer {{
+    font-size: 8pt;
+    color: #999;
+    text-align: center;
+    margin-top: 2rem;
+    border-top: 1px solid #eee;
+    padding-top: 0.6rem;
+  }}
+  @media print {{
+    body {{ margin: 1cm; max-width: 100%; }}
+  }}
+</style>
+</head>
+<body>
+{summary_html}
+<div class="notice">
+  This summary is preparation material only. It is not legal advice and should not be used as a court document.
+  Bring it to your appointment with a lawyer, legal adviser, or support service such as Citizens Advice.
+</div>
+<div class="doc-footer">
+  Small Claims Prep — England and Wales only — smallclaims.streamlit.app
+</div>
+<script>
+  window.onload = function() {{ window.print(); }}
+</script>
+</body>
+</html>"""
+    components.html(print_html, height=0, scrolling=False)
+    st.info("Your browser's print dialog should have opened. Select 'Save as PDF' to save a copy.")
 
 # ── WELCOME ───────────────────────────────────────────────────────────────────
 if st.session_state.stage == "welcome":
@@ -398,24 +496,22 @@ elif st.session_state.stage == "agent1":
 
     if facts_done:
         if st.button("Continue to Legal Analysis →"):
-            convo_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages_1])
-            summary_prompt = f"Summarise the following fact-collection conversation into a structured summary covering: what happened, key dates, amount involved, evidence available, and payment method.\n\n{convo_text}"
-            summary = call_claude("You produce structured factual summaries. Be concise and factual.", [{"role": "user", "content": summary_prompt}])
+            with st.spinner("Summarising your case..."):
+                convo_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages_1])
+                summary_prompt = f"Summarise the following fact-collection conversation into a structured summary covering: what happened, key dates, amount involved, evidence available, and payment method.\n\n{convo_text}"
+                summary = call_claude("You produce structured factual summaries. Be concise and factual.", [{"role": "user", "content": summary_prompt}])
             st.session_state.facts_summary = summary
+            st.session_state.messages_1 = []
             st.session_state.stage = "agent2"
             st.rerun()
     else:
-        user_input = st.text_area(
-            "Your response",
-            key=f"input_1_{st.session_state.input_key_1}",
-            height=100,
-            placeholder="Type here..."
-        )
+        user_input = render_input("1", st.session_state.input_key_1, "Type here...")
         if st.button("Send", key="send_1") and user_input.strip():
             st.session_state.input_key_1 += 1
             st.session_state.messages_1.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_1]
-            response = call_claude(system, api_messages)
+            with st.spinner("Thinking..."):
+                response = call_claude(system, api_messages)
             st.session_state.messages_1.append({"role": "assistant", "content": response})
             st.rerun()
 
@@ -494,18 +590,14 @@ elif st.session_state.stage == "agent3":
                 st.session_state.stage = "agent4"
                 st.rerun()
     else:
-        user_input = st.text_area(
-            "Your answer",
-            key=f"input_3_{st.session_state.input_key_3}",
-            height=100,
-            placeholder="Answer the question above..."
-        )
+        user_input = render_input("3", st.session_state.input_key_3, "Answer the question above...")
         if st.button("Send", key="send_3") and user_input.strip():
             st.session_state.input_key_3 += 1
             st.session_state.cross_count += 1
             st.session_state.messages_3.append({"role": "user", "content": user_input.strip()})
             api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages_3]
-            response = call_claude(system, api_messages)
+            with st.spinner("Thinking..."):
+                response = call_claude(system, api_messages)
             st.session_state.messages_3.append({"role": "assistant", "content": response})
             st.rerun()
 
@@ -559,78 +651,6 @@ elif st.session_state.stage == "agent4":
             st.rerun()
 
     if show_print:
-        import streamlit.components.v1 as components
-        import markdown as md_lib
-
-        summary_html = md_lib.markdown(st.session_state.final_summary)
-
-        print_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta charset="utf-8">
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
-          body {{
-            font-family: 'DM Sans', sans-serif;
-            font-size: 11pt;
-            color: #1a1a1a;
-            max-width: 680px;
-            margin: 2rem auto;
-            line-height: 1.6;
-          }}
-          h1, h2, h3, h4 {{
-            font-family: 'DM Serif Display', serif;
-            margin-top: 1.4rem;
-            margin-bottom: 0.4rem;
-          }}
-          h1 {{ font-size: 1.5rem; }}
-          h2 {{ font-size: 1.2rem; border-bottom: 1px solid #ccc; padding-bottom: 0.2rem; }}
-          h3 {{ font-size: 1rem; }}
-          ul, ol {{ padding-left: 1.4rem; }}
-          li {{ margin-bottom: 0.3rem; }}
-          table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 10pt; }}
-          th {{ text-align: left; border-bottom: 2px solid #1a1a1a; padding: 0.4rem 0.6rem; }}
-          td {{ border-bottom: 1px solid #ddd; padding: 0.4rem 0.6rem; vertical-align: top; }}
-          .notice {{
-            border-left: 3px solid #1a1a1a;
-            padding: 0.6rem 0.8rem;
-            background: #f5f3ef;
-            font-size: 9pt;
-            margin-top: 1.5rem;
-            color: #444;
-          }}
-          .footer {{
-            font-size: 8pt;
-            color: #999;
-            text-align: center;
-            margin-top: 2rem;
-            border-top: 1px solid #eee;
-            padding-top: 0.6rem;
-          }}
-          @media print {{
-            body {{ margin: 1cm; max-width: 100%; }}
-            button {{ display: none; }}
-          }}
-        </style>
-        </head>
-        <body>
-        {summary_html}
-        <div class="notice">
-          This summary is preparation material only. It is not legal advice and should not be used as a court document.
-          Bring it to your appointment with a lawyer, legal adviser, or support service such as Citizens Advice.
-        </div>
-        <div class="footer">
-          Small Claims Prep — England and Wales only — smallclaims.streamlit.app
-        </div>
-        <script>
-          window.onload = function() {{ window.print(); }}
-        </script>
-        </body>
-        </html>
-        """
-
-        components.html(print_html, height=0, scrolling=False)
-        st.info("Your browser print dialog should have opened. Choose 'Save as PDF' to save a copy.")
+        render_print_pdf(st.session_state.final_summary)
 
     render_footer()
