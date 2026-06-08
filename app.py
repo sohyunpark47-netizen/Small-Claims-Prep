@@ -583,7 +583,6 @@ elif st.session_state.stage == "agent3":
         with col1:
             if st.button("← Back to Legal Analysis"):
                 st.session_state.stage = "agent2"
-                st.session_state.messages_3 = []
                 st.rerun()
         with col2:
             if st.button("Generate My Summary →"):
@@ -603,7 +602,6 @@ elif st.session_state.stage == "agent3":
 
         if st.button("← Back to Legal Analysis", key="back_3"):
             st.session_state.stage = "agent2"
-            st.session_state.messages_3 = []
             st.rerun()
 
     render_footer()
